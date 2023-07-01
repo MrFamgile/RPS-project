@@ -3,7 +3,8 @@ from tkinter import ttk
 from tkinter import *
 import threading
 import time
-# from RSA import RSA
+import RSA
+import json
 
 class Client:
     def __init__(self):
@@ -11,6 +12,10 @@ class Client:
         self.scoreP2 = 0
         self.player_choice = None
         self.other_player_choice = None
+
+        self.primes = RSA.get_primes(15, 300)
+        self.public_key, self.private_key = RSA.keys(self.primes[0], self.primes[1])
+        self.other_public_key = None
 
         # Create a socket object
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -21,6 +26,9 @@ class Client:
         # Connect to the server
         self.client_socket.connect(self.server_address)
         print("Connected to the server.")
+
+        self.client_socket.send(str(self.public_key).encode())
+        print("Sent public key to the server.", self.public_key)
 
         # Create an instance of tkinter frame
         self.win = Tk()
@@ -34,6 +42,11 @@ class Client:
         # Create an instance of the GUI class
         self.gui = Gui(self.win, self.isrock, self.ispaper, self.isscissor)
 
+        # Receives the other client's public key
+        other_public_key_str = self.client_socket.recv(1024).decode()
+        self.other_public_key = eval(other_public_key_str)
+        print(self.other_public_key)
+
         # Start a separate thread to receive the other player's choice
         choice_thread = threading.Thread(target=self.receive_choice)
         choice_thread.start()
@@ -44,7 +57,7 @@ class Client:
     def receive_choice(self):
         while True:
             # Receive the choices from the server
-            self.other_player_choice = self.client_socket.recv(1024).decode()
+            self.other_player_choice = RSA.decrypt(self.private_key, json.loads(self.client_socket.recv(1024).decode()))
             # Call handle_match_result after receiving the other player's choice
             self.handle_match_result()
 
@@ -78,18 +91,24 @@ class Client:
 
     def isrock(self):
         self.make_choice("Rock")
-        self.client_socket.send(self.player_choice.encode())
+        enc_message = RSA.encrypt(self.other_public_key, self.player_choice)
+        self.client_socket.send(json.dumps(enc_message).encode('utf-8'))
         self.gui.update_player_choice(self.player_choice)
+        self.gui.reset_other_player_img()
 
     def ispaper(self):
         self.make_choice("Paper")
-        self.client_socket.send(self.player_choice.encode())
+        enc_message = RSA.encrypt(self.other_public_key, self.player_choice)
+        self.client_socket.send(json.dumps(enc_message).encode('utf-8'))
         self.gui.update_player_choice(self.player_choice)
+        self.gui.reset_other_player_img()
 
     def isscissor(self):
         self.make_choice("Scissors")
-        self.client_socket.send(self.player_choice.encode())
+        enc_message = RSA.encrypt(self.other_public_key, self.player_choice)
+        self.client_socket.send(json.dumps(enc_message).encode('utf-8'))
         self.gui.update_player_choice(self.player_choice)
+        self.gui.reset_other_player_img()
 
     def start(self):
         self.win.mainloop()
@@ -152,6 +171,9 @@ class Gui:
         self.img1.place(relx=.10, rely=.30)
         self.img2 = Label(labelframe, image=self.choose2Image, bg="slategray2")
         self.img2.place(relx=.77, rely=.30)
+    
+    def reset_other_player_img(self):
+        self.img2.config(image=self.choose2Image)
 
     def update_player_choice(self, choice):
         if choice == "Rock":
