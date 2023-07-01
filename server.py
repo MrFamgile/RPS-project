@@ -1,6 +1,5 @@
 import socket
 import threading
-# from RSA import RSA
 
 class Server:
     def __init__(self):
@@ -9,13 +8,13 @@ class Server:
         self.player_locks = [threading.Lock(), threading.Lock()]
         self.choices_event = threading.Event()
         self.server_socket = None
+        self.public_keys = {}
 
     def handle_client(self, client_socket, player_number):
         try:
             while True: 
                 # Receive the player's choice from the client
                 choice = client_socket.recv(1024).decode()
-                print("Player", player_number, "choice:", choice)
 
                 # Store the player's choice
                 with self.player_locks[player_number - 1]:
@@ -23,6 +22,7 @@ class Server:
 
                 # Check if both players have made their choices
                 if len(self.player_choices) == 2:
+                    
                     # Set the event to signal that both players have made their choices
                     self.choices_event.set()
 
@@ -70,16 +70,33 @@ class Server:
 
                 # Get the player number for this client
                 player_number = len(self.clients)
+                
+                if player_number == 1:
+                    # Receive the first client's public key
+                    public_key_str = client_socket.recv(1024).decode()
+                    self.public_keys[0] = (public_key_str)
+                    print("Received public key from Client 1")
+                    print(self.public_keys[0])
+
+                if player_number == 2:
+                    # Receive the second client's public key
+                    public_key_str = client_socket.recv(1024).decode()
+                    self.public_keys[1] = eval(public_key_str)
+                    print("Received public key from Client 2")
+                    print(self.public_keys[1])
 
                 # Start a new thread to handle the client
                 client_thread = threading.Thread(target=self.handle_client, args=(client_socket, player_number))
                 client_thread.start()
 
-                # Check if all players have connected
-                if len(self.clients) == 2:
+                # Check if all players have connected and shared their public keys
+                if len(self.clients) == 2 and len(self.public_keys) == 2:
                     # Reset the choices and event for a new game
                     self.player_choices.clear()
                     self.choices_event.clear()
+                    # Sends the public key to the other client
+                    self.clients[0].send(str(self.public_keys[1]).encode())
+                    self.clients[1].send(str(self.public_keys[0]).encode())
 
         finally:
             # Close the server socket
